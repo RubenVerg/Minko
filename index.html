@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <!-- <link rel="icon" type="image/svg+xml" href="/vite.svg" /> -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Minko</title>
+</head>
+
+<body>
+  <dialog id="tutorial" class="hidden">
+    <div class="bubble">
+      <p id="tutorial-text">
+        Welcome to Minko! Please enable JavaScript to play this game. If it's already enabled, the game's probably still loading.
+      </p>
+      <button id="tutorial-confirm" class="hidden">
+        <i class="bi bi-check-lg"></i>
+        OK!
+      </button>
+      <button id="skip-tutorial" class="hidden">
+        <i class="bi bi-fast-forward"></i>
+        Skip tutorial
+      </button>
+      <button id="next-level" class="hidden">
+        <i class="bi bi-caret-right"></i>
+        Next level
+      </button>
+    </div>
+  </dialog>
+  <dialog id="level-select" class="hidden">
+    <button id="level-select-close">
+      <i class="bi bi-x-lg"></i>
+    </button>
+  </dialog>
+  <main>
+    <div class="canv">
+      <canvas id="left" width="400" height="300"></canvas>
+      <div class="hand hidden" id="hand-first-point">
+        <i class="bi bi-hand-index"></i>
+      </div>
+      <div class="hand hidden" id="hand-second-point">
+        <i class="bi bi-hand-index"></i>
+      </div>
+      <div class="hand hidden" id="hand-first-line-a">
+        <i class="bi bi-hand-index"></i>
+      </div>
+      <div class="hand hidden" id="hand-first-line-b">
+        <i class="bi bi-hand-index"></i>
+      </div>
+      <div class="hand hidden" id="hand-first-polygon-a">
+        <i class="bi bi-hand-index"></i>
+      </div>
+      <div class="hand hidden" id="hand-first-polygon-b">
+        <i class="bi bi-hand-index"></i>
+      </div>
+      <div class="hand hidden" id="hand-first-polygon-c">
+        <i class="bi bi-hand-index"></i>
+      </div>
+      <div class="hand hidden" id="hand-first-polygon-d">
+        <i class="bi bi-hand-index"></i>
+      </div>
+      <button class="btn-clear hidden" id="clear-left">
+        <i class="bi bi-trash"></i>
+        Clear
+      </button>
+    </div>
+    <div class="canv">
+      <canvas id="right" width="400" height="300"></canvas>
+      <button class="btn-clear hidden" id="clear-right">
+        <i class="bi bi-trash"></i>
+        Clear
+      </button>
+    </div>
+    <div class="canv">
+      <canvas id="sum" width="400" height="300"></canvas>
+      <button class="btn-clear hidden" id="clear-sum">
+        <i class="bi bi-trash"></i>
+        Clear
+      </button>
+    </div>
+    <nav>
+      <span id="grids" class="hidden">
+        <button class="grid" data-grid="square">
+          <i class="bi bi-square"></i>
+          Square grid
+        </button>
+        <button class="grid" data-grid="triangle">
+          <i class="bi bi-triangle"></i>
+          Triangle grid
+        </button>
+      </span>
+      <span id="tools">
+        <button class="tool" data-tool="point">
+          <i class="bi bi-dot"></i>
+          Point
+        </button>
+        <button class="tool" data-tool="line">
+          <i class="bi bi-slash-lg"></i>
+          Line
+        </button>
+        <button class="tool" data-tool="polygon">
+          <i class="bi bi-pentagon"></i>
+          Polygon
+        </button>
+        <button class="tool" data-tool="circle">
+          <i class="bi bi-circle"></i>
+          Circle
+        </button>
+      </span>
+    </nav>
+    <header>
+      <h1>Minko <small>by RubenVerg</small></h1>
+      <br>
+      <h2>
+        <button aria-label="Levels" id="sandbox-button">
+          <i class="bi bi-pen"></i>
+        </button>
+        <button aria-label="Levels" id="levels-button">
+          <i class="bi bi-list"></i>
+        </button>
+        <span id="level-name"></span>
+      </h2>
+    </header>
+  </main>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+
+</html>

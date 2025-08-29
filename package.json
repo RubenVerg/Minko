@@ -1,0 +1,18 @@
+{
+  "name": "minko",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "bundle": "npm run build && node bundle.js"
+  },
+  "devDependencies": {
+    "sass-embedded": "^1.91.0",
+    "typescript": "~5.8.3",
+    "vite": "^7.1.2"
+  }
+}
