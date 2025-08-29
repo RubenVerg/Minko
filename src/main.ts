@@ -36,7 +36,7 @@ type Path = Line | Point | Polygon | Circle | DOMPath;
 class Shape {
 	static offscreen = new OffscreenCanvas(800, 600);
 
-	private path: Path[];
+	private readonly path: Path[];
 	private isAlreadyCentered;
 
 	constructor(isAlreadyCentered = false) {
@@ -52,6 +52,31 @@ class Shape {
 	copy(that: Shape) {
 		this.path.push(...that.path);
 		this.isAlreadyCentered = that.isAlreadyCentered;
+	}
+
+	erasePoint(x: number, y: number) {
+		const oldPath = this.path.slice();
+		this.path.splice(0, this.path.length);
+		this.path.push(...oldPath.flatMap((path): Path[] => {
+			switch (path.type) {
+				case 'point':
+					if (path.x === x && path.y === y) return [];
+					else return [path];
+				case 'line':
+					if ((path.x1 === x && path.y1 === y) || (path.x2 === x && path.y2 === y)) return [];
+					else return [path];
+				case 'polygon':
+					for (const point of path.points) {
+						if (point[0] === x && point[1] === y) return [];
+					}
+					return [path];
+				case 'circle':
+					if (Math.abs(Math.hypot(path.cx - x, path.cy - y) - path.radius) < 1e-6) return [];
+					return [path];
+				case 'dom-path':
+					return [path];
+			}
+		}));
 	}
 
 	line(x1: number, y1: number, x2: number, y2: number) {
@@ -628,6 +653,10 @@ function makeClickListener(canvas: HTMLCanvasElement, shape: Shape, clickable: (
 						}
 					}
 					building.push(point);
+					break;
+				}
+				case 'eraser': {
+					shape.erasePoint(...point);
 					break;
 				}
 			}
