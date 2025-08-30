@@ -223,7 +223,7 @@ div.canv {
 
 nav {
   position: absolute;
-  bottom: 0;
+  top: calc(50% + 160px);
   right: 0;
   display: inline-flex;
   flex-direction: column;

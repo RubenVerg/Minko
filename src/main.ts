@@ -1387,12 +1387,12 @@ z`.replaceAll(/[\d\.-]+/g, digits => (Number.parseFloat(digits) * 3.8 * gridUnit
 	},
 	{
 		type: 'tutorial-place-object',
-		message: 'Place a regular pentagon by drawing its first side.',
+		message: 'Place a regular pentagon by drawing its first side. The polygon is drawn anticlockwise from the ray starting at the first point and ending at the second.',
 		hands: ['hand-first-regular-a', 'hand-first-regular-b'],
 	},
 	{
 		type: 'tutorial-place-object',
-		message: 'Regular polygons introduce new points off the grid that you can snap to. Place a triangle connected to one of thw top two sides of the pentagon.',
+		message: 'Regular polygons introduce new points off the grid that you can snap to. Place a triangle connected to one of the top two sides of the pentagon.',
 	},
 	{
 		type: 'tutorial-complete-level',
