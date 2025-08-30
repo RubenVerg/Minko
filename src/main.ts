@@ -26,12 +26,21 @@ interface Circle {
 	radius: number;
 }
 
+interface Regular {
+	type: 'regular';
+	x1: number;
+	y1: number;
+	x2: number;
+	y2: number;
+	symbol: string;
+}
+
 interface DOMPath {
 	type: 'dom-path';
 	path: Path2D;
 }
 
-type Path = Line | Point | Polygon | Circle | DOMPath;
+type Path = Line | Point | Polygon | Circle | Regular | DOMPath;
 
 class Shape {
 	static offscreen = new OffscreenCanvas(800, 600);
@@ -73,6 +82,11 @@ class Shape {
 				case 'circle':
 					if (Math.abs(Math.hypot(path.cx - x, path.cy - y) - path.radius) < 1e-6) return [];
 					return [path];
+				case 'regular':
+					for (const point of Shape.regularPoints(path)) {
+						if (point[0] === x && point[1] === y) return [];
+					}
+					return [path];
 				case 'dom-path':
 					return [path];
 			}
@@ -109,6 +123,36 @@ class Shape {
 			cx, cy, radius,
 		});
 		return this;
+	}
+
+	static checkSymbol(symbol: string) {
+		return /^(\d+|\d+\/\d+)$/.test(symbol);
+	}
+
+	static regularPoints({ x1, y1, x2, y2, symbol }: Regular) {
+		if (/^\d+$/.test(symbol)) symbol += '/1';
+		const [sides, split] = symbol.split('/').map(s => Number.parseInt(s));
+		const alpha = (Math.PI - 2 * Math.PI * split / sides);
+		const cosAlpha = Math.cos(alpha), sinAlpha = Math.sin(alpha);
+		const points: [number, number][] = [];
+		for (let x = 0; x < sides; x++) {
+			points.push([x1, y1]);
+			const x3 = (x1 - x2) * cosAlpha - (y1 - y2) * sinAlpha + x2;
+			const y3 = (x1 - x2) * sinAlpha + (y1 - y2) * cosAlpha + y2;
+			x1 = x2;
+			y1 = y2;
+			x2 = x3;
+			y2 = y3;
+		}
+		return points;
+	}
+
+	regular(x1: number, y1: number, x2: number, y2: number, symbol: string) {
+		if (!Shape.checkSymbol(symbol)) return;
+		this.path.push({
+			type: 'regular',
+			x1, y1, x2, y2, symbol,
+		});
 	}
 
 	domPath(path: Path2D) {
@@ -163,6 +207,19 @@ class Shape {
 					ctx.lineWidth = forDisplay ? 3 : 1;
 					ctx.beginPath();
 					ctx.arc(datum.cx, datum.cy, datum.radius, 0, 2 * Math.PI);
+					ctx.fill();
+					ctx.stroke();
+					break;
+				}
+				case 'regular': {
+					ctx.strokeStyle = forDisplay ? color : 'transparent';
+					ctx.fillStyle = forDisplay ? `rgb(from ${color} r g b / calc(8 / 15))` : color;
+					ctx.lineWidth = forDisplay ? 3 : 1;
+					const points = Shape.regularPoints(datum);
+					ctx.beginPath();
+					ctx.moveTo(...points[0]);
+					for (const point of points.slice(1)) ctx.lineTo(...point);
+					ctx.closePath();
 					ctx.fill();
 					ctx.stroke();
 					break;
@@ -258,6 +315,16 @@ class Shape {
 		}
 		const cx = (xmin + xmax) / 2, cy = (ymin + ymax) / 2;
 		tCtx.drawImage(ctx.canvas, tCtx.canvas.width / 2 - cx, tCtx.canvas.height / 2 - cy);
+	}
+
+	additionalPoints(): [number, number][] {
+		const additional = [];
+		for (const datum of this.path) {
+			if (datum.type === 'regular') {
+				additional.push(...Shape.regularPoints(datum));
+			}
+		}
+		return additional;
 	}
 }
 
@@ -357,7 +424,11 @@ let rightGrid: Grid = 'square';
 const rightClearButton = document.querySelector<HTMLButtonElement>('#clear-right')!;
 let rightEditable = false;
 
-let building: any = null, buildingSide = 0, buildingWhat = 'point';
+type Tool = 'point' | 'line' | 'polygon' | 'circle' | 'regular';
+type PseudoTool = 'grid-selection' | 'eraser';
+type AnyTool = Tool | PseudoTool;
+let building: any = null, buildingSide = 0, buildingWhat: AnyTool = 'point';
+const allowedTools: Tool[] = [];
 
 const sum = document.querySelector<HTMLCanvasElement>('#sum')!;
 const sumCtx = sum.getContext('2d')!;
@@ -375,6 +446,9 @@ const skipTutorialButton = document.querySelector<HTMLButtonElement>('#skip-tuto
 const levelNameText = document.querySelector<HTMLSpanElement>('#level-name')!;
 const levelSelect = document.querySelector<HTMLDialogElement>('#level-select')!;
 
+const sidesBlock = document.querySelector<HTMLDivElement>('#config-sides')!;
+const sidesInput = document.querySelector<HTMLInputElement>('#config-sides-input')!;
+
 const grids = document.querySelector<HTMLSpanElement>('#grids')!;
 
 let mouseX = 0, mouseY = 0;
@@ -386,30 +460,41 @@ document.body.addEventListener('mousemove', evt => {
 });
 
 function snapCoord(pos: number, size: number, gridSize: number) {
-	return Math.round((pos - size / 2) / gridSize) * gridUnit + size / 2;
+	return Math.round((pos - size / 2) / gridSize) * gridSize + size / 2;
 }
 
 const triMatrix: [number, number, number, number] = [2 / Math.sqrt(3), 1 / Math.sqrt(3), 0, 1];
 const triInvMatrix: [number, number, number, number] = [Math.sqrt(3) / 2, -1 / 2, 0, 1];
 
-function snap(x: number, y: number, width: number, height: number, grid: Grid): [number, number] {
-	switch (grid) {
-		case 'square':
-		case 'fine-square':
-			return [snapCoord(x, width, gridSize(grid)), snapCoord(y, height, gridSize(grid))];
-		case 'triangle':
-		case 'fine-triangle':
-		{
-			const xr = x - width / 2, yr = y - height / 2;
-			const x1 = triInvMatrix[0] * xr + triInvMatrix[1] * yr;
-			const y1 = triInvMatrix[2] * xr + triInvMatrix[3] * yr;
-			const xs = Math.round(x1 / gridSize(grid)) * gridSize(grid);
-			const ys = Math.round(y1 / gridSize(grid)) * gridSize(grid);
-			const x2 = triMatrix[0] * xs + triMatrix[1] * ys;
-			const y2 = triMatrix[2] * xs + triMatrix[3] * ys;
-			return [x2 + width / 2, y2 + height / 2];
+function snap(x: number, y: number, width: number, height: number, grid: Grid, additional: [number, number][]): [number, number] {
+	let point = ((): [number, number] => {
+		switch (grid) {
+			case 'square':
+			case 'fine-square':
+				return [snapCoord(x, width, gridSize(grid)), snapCoord(y, height, gridSize(grid))];
+			case 'triangle':
+			case 'fine-triangle':
+				{
+					const xr = x - width / 2, yr = y - height / 2;
+					const x1 = triInvMatrix[0] * xr + triInvMatrix[1] * yr;
+					const y1 = triInvMatrix[2] * xr + triInvMatrix[3] * yr;
+					const xs = Math.round(x1 / gridSize(grid)) * gridSize(grid);
+					const ys = Math.round(y1 / gridSize(grid)) * gridSize(grid);
+					const x2 = triMatrix[0] * xs + triMatrix[1] * ys;
+					const y2 = triMatrix[2] * xs + triMatrix[3] * ys;
+					return [x2 + width / 2, y2 + height / 2];
+				}
+		}
+	})();
+	let d2p = Math.hypot(x - point[0], y - point[1]);
+	for (const ap of additional) {
+		const d3p = Math.hypot(x - ap[0], y - ap[1]);
+		if (d3p < d2p) {
+			point = ap;
+			d2p = d3p;
 		}
 	}
+	return point;
 }
 
 const gridUnit = 40;
@@ -456,6 +541,8 @@ function render() {
 					rightEditable = false;
 					sumEditable = false;
 					leftGrid = rightGrid = sumGrid = st.grid ?? 'square';
+					allowedTools.splice(0, allowedTools.length);
+					allowedTools.push(...(st.allowedTools ?? [...document.querySelectorAll<HTMLButtonElement>('.tool')].map(toolElement => toolElement.dataset.tool! as Tool)));
 					if (st.type === 'show-level-bc') stage++;
 					break;
 				}
@@ -471,11 +558,14 @@ function render() {
 					rightEditable = false;
 					sumEditable = true;
 					leftGrid = rightGrid = sumGrid = st.grid ?? 'square';
+					allowedTools.splice(0, allowedTools.length);
+					allowedTools.push(...(st.allowedTools ?? [...document.querySelectorAll<HTMLButtonElement>('.tool')].map(toolElement => toolElement.dataset.tool! as Tool)));
 					if (st.type === 'show-level-ab') stage++;
 					break;
 				}
 			case 'win':
 				{
+					levelNameText.textContent = '';
 					tutorialBlock.classList.remove('hidden');
 					confirmButton.classList.add('hidden');
 					skipTutorialButton.classList.add('hidden');
@@ -516,17 +606,21 @@ function render() {
 	if (!sumEditable) leftShape.sum(rightShape, sumCtx, 'purple');
 	sumCtx.font = '50px serif';
 	sumCtx.fillStyle = 'green';
+	if (buildingWhat === 'regular') sidesBlock.classList.remove('hidden');
+	else sidesBlock.classList.add('hidden');
 	if (building !== null) {
 		const buildingCtx = [leftCtx, rightCtx, sumCtx][buildingSide]!;
 		switch (buildingWhat) {
 			case 'line':
-			case 'circle': {
-				buildingCtx.fillStyle = 'red';
-				buildingCtx.beginPath();
-				buildingCtx.arc(...(building as [number, number]), 5, 0, 2 * Math.PI);
-				buildingCtx.fill();
-				break;
-			}
+			case 'circle':
+			case 'regular':
+				{
+					buildingCtx.fillStyle = 'red';
+					buildingCtx.beginPath();
+					buildingCtx.arc(...(building as [number, number]), 5, 0, 2 * Math.PI);
+					buildingCtx.fill();
+					break;
+				}
 			case 'polygon': {
 				buildingCtx.fillStyle = 'red';
 				for (const [pointX, pointY] of building) {
@@ -558,13 +652,13 @@ function render() {
 	if (sumEditable) sumClearButton.classList.remove('hidden');
 	else sumClearButton.classList.add('hidden');
 	if (leftEditable && leftX >= 0 && leftX < left.clientWidth && leftY >= 0 && leftY < left.clientHeight) {
-		drawHover(leftCtx, leftX, leftY, left.clientWidth, left.clientHeight, leftGrid);
+		drawHover(leftCtx, leftX, leftY, left.clientWidth, left.clientHeight, leftGrid, leftShape.additionalPoints());
 	}
 	if (rightEditable && rightX >= 0 && rightX < right.clientWidth && rightY >= 0 && rightY < right.clientHeight) {
-		drawHover(rightCtx, rightX, rightY, right.clientWidth, right.clientHeight, rightGrid);
+		drawHover(rightCtx, rightX, rightY, right.clientWidth, right.clientHeight, rightGrid, rightShape.additionalPoints());
 	}
 	if (sumEditable && sumX >= 0 && sumX < sum.clientWidth && sumY >= 0 && sumY < sum.clientHeight) {
-		drawHover(sumCtx, sumX, sumY, sum.clientWidth, sum.clientHeight, sumGrid);
+		drawHover(sumCtx, sumX, sumY, sum.clientWidth, sum.clientHeight, sumGrid, sumShape.additionalPoints());
 	}
 	if (compare(leftShape, rightShape, sumShape)) {
 		tutorialText.innerText = '';
@@ -573,8 +667,11 @@ function render() {
 		tutorialBlock.classList.remove('hidden');
 	}
 	for (const toolButton of document.querySelectorAll<HTMLButtonElement>('.tool')) {
-		if (toolButton.dataset.tool! === buildingWhat) toolButton.classList.add('active');
+		const tool = toolButton.dataset.tool! as AnyTool;
+		if (tool === buildingWhat) toolButton.classList.add('active');
 		else toolButton.classList.remove('active');
+		if (tool === 'eraser' || allowedTools.includes(tool as Tool)) toolButton.disabled = false;
+		else toolButton.disabled = true;
 	}
 	for (const gridButton of document.querySelectorAll<HTMLButtonElement>('.grid')) {
 		if (buildingWhat === 'grid-selection' && gridButton.dataset.grid! === building) gridButton.classList.add('active');
@@ -582,11 +679,11 @@ function render() {
 	}
 }
 
-function drawHover(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, grid: Grid) {
+function drawHover(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, grid: Grid, additional: [number, number][]) {
 	ctx.strokeStyle = 'blue';
 	ctx.lineWidth = 2;
 	ctx.beginPath();
-	ctx.arc(...snap(x, y, width, height, grid), 6, 0, 2 * Math.PI);
+	ctx.arc(...snap(x, y, width, height, grid, additional), 6, 0, 2 * Math.PI);
 	ctx.stroke();
 }
 
@@ -598,7 +695,7 @@ function makeClickListener(canvas: HTMLCanvasElement, shape: Shape, clickable: (
 			return;
 		}
 		if (clickable()) {
-			const point = snap(evt.offsetX, evt.offsetY, canvas.clientWidth, canvas.clientHeight, grid());
+			const point = snap(evt.offsetX, evt.offsetY, canvas.clientWidth, canvas.clientHeight, grid(), shape.additionalPoints());
 			sw: switch (buildingWhat) {
 				case 'point': {
 					building = null;
@@ -653,6 +750,23 @@ function makeClickListener(canvas: HTMLCanvasElement, shape: Shape, clickable: (
 						}
 					}
 					building.push(point);
+					break;
+				}
+				case 'regular': {
+					if (buildingSide !== side) {
+						building = null;
+						buildingSide = side;
+					}
+					const symbol = sidesInput.value;
+					if (Shape.checkSymbol(symbol)) {
+						if (building === null) {
+							building = point;
+						} else {
+							shape.regular(...(building as [number, number]), ...point, symbol);
+							advancePlaceObject();
+							building = null;
+						}
+					}
 					break;
 				}
 				case 'eraser': {
@@ -726,16 +840,23 @@ document.querySelector<HTMLButtonElement>('#sandbox-button')!.addEventListener('
 	leftEditable = true;
 	rightEditable = true;
 	sumEditable = false;
+	allowedTools.splice(0, allowedTools.length);
+	allowedTools.push(...[...document.querySelectorAll<HTMLButtonElement>('.tool')].map(toolElement => toolElement.dataset.tool! as Tool));
 	grids.classList.remove('hidden');
 	render();
 });
 document.querySelector<HTMLButtonElement>('#level-select-close')!.addEventListener('click', () => {
 	levelSelect.classList.add('hidden');
-})
+});
+sidesInput.addEventListener('input', () => {
+	const symbol = sidesInput.value;
+	sidesInput.setCustomValidity(Shape.checkSymbol(symbol) ? '' : ' ');
+});
 for (const toolButton of [...document.querySelectorAll<HTMLButtonElement>('.tool')]) {
 	toolButton.addEventListener('click', () => {
 		building = null;
-		buildingWhat = toolButton.dataset.tool!;
+		buildingWhat = toolButton.dataset.tool! as AnyTool;
+		render();
 		advanceSelectTool(buildingWhat);
 	});
 }
@@ -743,6 +864,7 @@ for (const gridButton of [...document.querySelectorAll<HTMLButtonElement>('.grid
 	gridButton.addEventListener('click', () => {
 		buildingWhat = 'grid-selection';
 		building = gridButton.dataset.grid!;
+		render();
 	});
 }
 
@@ -775,6 +897,7 @@ interface TutorialCompleteLevel extends Tutorial {
 interface Level {
 	name: string;
 	grid?: Grid;
+	allowedTools?: Tool[];
 }
 
 interface ShowLevelBC extends Level {
@@ -820,6 +943,7 @@ const stages: Stage[] = [
 	{
 		type: 'show-level-bc',
 		name: 'Beginnings',
+		allowedTools: ['point'],
 		right: new Shape()
 			.polygon([
 				[4.5 * gridUnit, 3.25 * gridUnit],
@@ -875,7 +999,7 @@ const stages: Stage[] = [
 	},
 	{
 		type: 'tutorial-confirm',
-		message: 'If you accidentally draw something that you didn\'t mean to, you can use the Clear button.',
+		message: 'If you accidentally draw something that you didn\'t mean to, you can use the Clear button or the Eraser.',
 	},
 	{
 		type: 'tutorial-complete-level',
@@ -884,6 +1008,7 @@ const stages: Stage[] = [
 	{
 		type: 'show-level-bc',
 		name: 'Lines',
+		allowedTools: ['point', 'line'],
 		right: new Shape()
 			.circle(5 * gridUnit, 3.75 * gridUnit, gridUnit),
 		target: new Shape()
@@ -908,6 +1033,7 @@ Z`.replaceAll(/[\d\.-]+/g, digits => (Number.parseFloat(digits) * 3.8 * gridUnit
 	{
 		type: 'level-bc',
 		name: 'By yourself',
+		allowedTools: ['point', 'line'],
 		right: new Shape()
 			.line(4 * gridUnit, 3.75 * gridUnit, 6 * gridUnit, 3.75 * gridUnit),
 		target: new Shape()
@@ -921,6 +1047,7 @@ Z`.replaceAll(/[\d\.-]+/g, digits => (Number.parseFloat(digits) * 3.8 * gridUnit
 	{
 		type: 'show-level-bc',
 		name: 'The second dimension',
+		allowedTools: ['point', 'line', 'polygon'],
 		right: new Shape()
 			.point(6 * gridUnit, 2.75 * gridUnit)
 			.point(4 * gridUnit, 4.75 * gridUnit),
@@ -959,6 +1086,7 @@ Z`.replaceAll(/[\d\.-]+/g, digits => (Number.parseFloat(digits) * 3.8 * gridUnit
 	{
 		type: 'level-bc',
 		name: 'Dilation',
+		allowedTools: ['point', 'line', 'polygon'],
 		right: new Shape()
 			.polygon([
 				[4.75 * gridUnit, 3.5 * gridUnit],
@@ -977,6 +1105,7 @@ Z`.replaceAll(/[\d\.-]+/g, digits => (Number.parseFloat(digits) * 3.7 * gridUnit
 	{
 		type: 'level-bc',
 		name: 'Dilation II',
+		allowedTools: ['point', 'line', 'polygon'],
 		right: new Shape()
 			.circle(5 * gridUnit, 3.75 * gridUnit, 0.25 * gridUnit),
 		target: new Shape()
@@ -989,6 +1118,7 @@ Z`.replaceAll(/[\d\.-]+/g, digits => (Number.parseFloat(digits) * 3.8 * gridUnit
 	{
 		type: 'level-bc',
 		name: 'Enlargement',
+		allowedTools: ['point', 'line', 'polygon'],
 		right: new Shape()
 			.polygon([
 				[3.5 * gridUnit, 4.75 * gridUnit],
@@ -1005,6 +1135,7 @@ Z`.replaceAll(/[\d\.-]+/g, digits => (Number.parseFloat(digits) * 3.8 * gridUnit
 	{
 		type: 'show-level-ab',
 		name: 'Alternate request',
+		allowedTools: ['point', 'line', 'polygon'],
 		left: new Shape()
 			.polygon([
 				[4.5 * gridUnit, 3.25 * gridUnit],
@@ -1027,6 +1158,7 @@ Z`.replaceAll(/[\d\.-]+/g, digits => (Number.parseFloat(digits) * 3.8 * gridUnit
 	{
 		type: 'level-ab',
 		name: 'Two triangles',
+		allowedTools: ['point', 'line', 'polygon'],
 		left: new Shape()
 			.polygon([
 				[0 * gridUnit, 2 * gridUnit],
@@ -1043,6 +1175,7 @@ Z`.replaceAll(/[\d\.-]+/g, digits => (Number.parseFloat(digits) * 3.8 * gridUnit
 	{
 		type: 'level-ab',
 		name: 'Cap and cup',
+		allowedTools: ['point', 'line', 'polygon'],
 		left: new Shape(true)
 			.polygon([
 				[3 * gridUnit, 2.75 * gridUnit],
@@ -1069,6 +1202,7 @@ Z`.replaceAll(/[\d\.-]+/g, digits => (Number.parseFloat(digits) * 3.8 * gridUnit
 	{
 		type: 'level-ab',
 		name: 'Enlargement failure',
+		allowedTools: ['point', 'line', 'polygon'],
 		left: new Shape(true)
 			.polygon([
 				[3 * gridUnit, 2.75 * gridUnit],
@@ -1096,6 +1230,7 @@ Z`.replaceAll(/[\d\.-]+/g, digits => (Number.parseFloat(digits) * 3.8 * gridUnit
 		type: 'show-level-bc',
 		name: 'Two triangles II',
 		grid: 'triangle',
+		allowedTools: ['point', 'line', 'polygon'],
 		right: new Shape(true)
 			.polygon([
 				[right.clientWidth / 2 - 2 / Math.sqrt(3) * gridUnit, 3.75 * gridUnit],
@@ -1117,9 +1252,10 @@ Z`.replaceAll(/[\d\.-]+/g, digits => (Number.parseFloat(digits) * 3.8 * gridUnit
 		message: 'This level has a triangular grid. It works the same way as the normal square grid but it has 60° angles, allowing you to draw regular triangles and hexagons.'
 	},
 	{
-		type: 'show-level-bc',
+		type: 'level-bc',
 		name: 'Sierpinski',
 		grid: 'triangle',
+		allowedTools: ['point', 'line', 'polygon'],
 		right: new Shape(true)
 			.point(sum.clientWidth / 2 - 2 / Math.sqrt(3) * gridUnit, sum.clientHeight / 2)
 			.point(sum.clientWidth / 2 + 2 / Math.sqrt(3) * gridUnit, sum.clientHeight / 2)
@@ -1175,6 +1311,7 @@ Z`.replaceAll(/[\d\.-]+/g, digits => (Number.parseFloat(digits) * 3.8 * gridUnit
 		type: 'level-ab',
 		name: 'Washington Monument',
 		grid: 'fine-triangle',
+		allowedTools: ['point', 'line', 'polygon'],
 		left: new Shape(true)
 			.polygon([
 				[left.clientWidth / 2 - 1 / Math.sqrt(3) * gridUnit, left.clientHeight / 2 + gridUnit],
@@ -1184,9 +1321,82 @@ Z`.replaceAll(/[\d\.-]+/g, digits => (Number.parseFloat(digits) * 3.8 * gridUnit
 		right: new Shape(true)
 			.polygon([
 				[right.clientWidth / 2 - 1 / Math.sqrt(3) * gridUnit, right.clientHeight / 2 + 3 * gridUnit],
-				[right.clientWidth / 2 , right.clientHeight / 2 - 2 * gridUnit],
+				[right.clientWidth / 2, right.clientHeight / 2 - 2 * gridUnit],
 				[right.clientWidth / 2 + 1 / Math.sqrt(3) * gridUnit, right.clientHeight / 2 + 3 * gridUnit],
 			]),
+	},
+	{
+		type: 'show-level-bc',
+		name: 'Cats',
+		grid: 'square',
+		allowedTools: ['regular'],
+		right: new Shape()
+			.point(0 * gridUnit, 0 * gridUnit)
+			.point(0 * gridUnit, 2 * gridUnit)
+			.point(2 * gridUnit, 2 * gridUnit)
+			.point(2 * gridUnit, 0 * gridUnit),
+		target: new Shape()
+			.domPath(new Path2D(`M 0 0
+L 0.027905274 0.26303304
+L 0.10955404 0.51469727
+L 0.37413737 0.51469727
+L 0.45578613 0.26303304
+L 0.48317464 0
+L 0.2418457 0.10748698
+L 0 0
+z
+
+M 0.52916667 0
+L 0.55707194 0.26303304
+L 0.6387207 0.51469727
+L 0.90330404 0.51469727
+L 0.9849528 0.26303304
+L 1.0123413 0
+L 0.77101237 0.10748698
+L 0.52916667 0
+z
+
+M 0 0.52916667
+L 0.027905274 0.79219971
+L 0.10955404 1.0438639
+L 0.37413737 1.0438639
+L 0.45578613 0.79219971
+L 0.48317464 0.52916667
+L 0.2418457 0.63665365
+L 0 0.52916667
+z
+
+M 0.52916667 0.52916667
+L 0.55707194 0.79219971
+L 0.6387207 1.0438639
+L 0.90330404 1.0438639
+L 0.9849528 0.79219971
+L 1.0123413 0.52916667
+L 0.77101237 0.63665365
+L 0.52916667 0.52916667
+z`.replaceAll(/[\d\.-]+/g, digits => (Number.parseFloat(digits) * 3.8 * gridUnit).toString()))),
+	},
+	{
+		type: 'tutorial-select-tool',
+		message: 'You\'ve unlocked the ability to draw regular polygons of any amount of sides! Select the tool.',
+		tool: 'regular',
+	},
+	{
+		type: 'tutorial-confirm',
+		message: 'In the "Sides" input box you can type the amount of side you want your polygon to have.',
+	},
+	{
+		type: 'tutorial-place-object',
+		message: 'Place a regular pentagon by drawing its first side.',
+		hands: ['hand-first-regular-a', 'hand-first-regular-b'],
+	},
+	{
+		type: 'tutorial-place-object',
+		message: 'Regular polygons introduce new points off the grid that you can snap to. Place a triangle connected to one of thw top two sides of the pentagon.',
+	},
+	{
+		type: 'tutorial-complete-level',
+		message: 'Place the second triangle to complete the level.',
 	},
 	{
 		type: 'win',

@@ -14,7 +14,8 @@
   <dialog id="tutorial" class="hidden">
     <div class="bubble">
       <p id="tutorial-text">
-        Welcome to Minko! Please enable JavaScript to play this game. If it's already enabled, the game's probably still loading.
+        Welcome to Minko! Please enable JavaScript to play this game. If it's already enabled, the game's probably still
+        loading.
       </p>
       <button id="tutorial-confirm" class="hidden">
         <i class="bi bi-check-lg"></i>
@@ -62,6 +63,12 @@
       <div class="hand hidden" id="hand-first-polygon-d">
         <i class="bi bi-hand-index"></i>
       </div>
+      <div class="hand hidden" id="hand-first-regular-a">
+        <i class="bi bi-hand-index"></i>
+      </div>
+      <div class="hand hidden" id="hand-first-regular-b">
+        <i class="bi bi-hand-index"></i>
+      </div>
       <button class="btn-clear hidden" id="clear-left">
         <i class="bi bi-trash"></i>
         Clear
@@ -92,6 +99,12 @@
           Triangle grid
         </button>
       </span>
+      <span id="configs">
+        <div id="config-sides">
+          <label for="config-sides">Sides</label>
+          <input type="text" id="config-sides-input" name="config-sides-input" value="5">
+        </div>
+      </span>
       <span id="tools">
         <button class="tool" data-tool="point">
           <i class="bi bi-dot"></i>
@@ -104,6 +117,10 @@
         <button class="tool" data-tool="polygon">
           <i class="bi bi-pentagon"></i>
           Polygon
+        </button>
+        <button class="tool" data-tool="regular">
+          <i class="bi bi-hexagon"></i>
+          Regular Polygon
         </button>
         <button class="tool" data-tool="circle">
           <i class="bi bi-circle"></i>

@@ -209,6 +209,16 @@ div.canv {
     top: calc(50% + 40px);
     left: 50%;
   }
+  
+  &#hand-first-regular-a {
+    top: calc(50% + 40px);
+    left: calc(50% - 40px);
+  }
+
+  &#hand-first-regular-b {
+    top: calc(50% + 40px);
+    left: 50%;
+  }
 }
 
 nav {
@@ -221,6 +231,29 @@ nav {
   & span {
     display: inline-flex;
     margin-top: 3px;
+
+    & div {
+      font-size: 15pt;
+      display: flex;
+      width: 100%;
+      justify-content: space-between;
+
+      & input {
+        font-size: 15pt;
+        width: auto;
+        border-width: 3px;
+        border-style: solid;
+        border-radius: 3px;
+
+        &:valid {
+          border-color: green;
+        }
+
+        &:invalid {
+          border-color: red;
+        }
+      }
+    }
 
     & button {
       border-width: 1px;
@@ -253,6 +286,12 @@ nav {
         background: #555;
         color: white;
         border-color: white;
+      }
+
+      &:disabled {
+        background: #ccc;
+        color: #333;
+        border-color: #333;
       }
     }
   }
